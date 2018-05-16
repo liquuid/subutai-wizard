@@ -2,9 +2,10 @@
 
 TITLE="PeerOS setup wizard"
 NEXT="Next"
+LOG_FILE="/tmp/log-`date +%s`.txt"
 
 is_port_free(){
-    lsof -i :$1 > /dev/null;
+    lsof -i :$1 &> $LOG_FILE;
     echo $?;
 }
 
@@ -27,8 +28,8 @@ create_diskimg(){
 }
 
 zfs_setup(){
-    zpool create -f subutai $1 &&
-    zfs create -o mountpoint="/var/lib/lxc" subutai/fs
+    zpool create -f subutai $1 &> $LOG_FILE &&
+    zfs create -o mountpoint="/var/lib/lxc" subutai/fs &> $LOG_FILE
 }
 
 menu_partition(){
@@ -63,8 +64,8 @@ do
     if [ $res != 1 ]; then
         if [ $PORT = 53 ]; then
             echo "Disabling dnsmasq..."
-            systemctl disable systemd-resolved.service
-            service systemd-resolved stop
+            systemctl disable systemd-resolved.service &> $LOG_FILE
+            service systemd-resolved stop &> $LOG_FILE
         else
             echo "The $PORT must be not used";
             exit
@@ -75,28 +76,30 @@ do
 done; ) | whiptail --gauge "Checking $PORT service port" 20 60 0  --title "$TITLE"
 
 whiptail --infobox "Adding contrib and non-free to source list"  20 60 --title "$TITLE"
-SED_RES=`sed -i 's/main/main contrib non-free/g' /etc/apt/sources.list`
+sed -i 's/main/main contrib non-free/g' /etc/apt/sources.list &> $LOG_FILE
 
 whiptail --infobox "Updating the repositories index..."  20 60 --title "$TITLE"
-APT_UP_RES=`apt-get update`
+apt update &> $LOG_FILE
 
-DEBIAN_FRONTEND=noninteractive apt-get -y install zfsutils-linux lxc dirmngr;
+whiptail --infobox "Installing the base dependencies to subutai...\n\nWARNING: This can take some time\n\n Check the logs in: $LOG_FILE"  20 60 --title "$TITLE"
+DEBIAN_FRONTEND=noninteractive apt -y install zfsutils-linux lxc dirmngr &> $LOG_FILE;
 
 whiptail --infobox "Adding security keys..."  20 60 --title "$TITLE"
-APT_UP_RES=`apt-key adv --recv-keys --keyserver keyserver.ubuntu.com C6B2AC7FBEB649F1`
+apt-key adv --recv-keys --keyserver keyserver.ubuntu.com C6B2AC7FBEB649F1 &> $LOG_FILE
 
 whiptail --infobox "Loading ZFS module..."  20 60 --title "$TITLE"
-depmod
-Modprobe_zfs_RES=`modprobe zfs`
+depmod &> $LOG_FILE
+modprobe zfs &> $LOG_FILE
 
 menu_partition
 
 whiptail --infobox "Adding Subutai deb repository..."  20 60 --title "$TITLE"
 echo "deb http://deb.subutai.io/subutai prod main" > /etc/apt/sources.list.d/subutai.list
-apt-get -y update &> /dev/null
+apt -y update &> $LOG_FILE
 
-whiptail --infobox "Installing Subutai ..."  20 60 --title "$TITLE"
-apt-get -y install subutai &> /dev/null
+whiptail --infobox "Installing Subutai ...\n\nWARNING: This can take some time\n\n Check the logs in: $LOG_FILE"  20 60 --title "$TITLE"
+apt -y install subutai &> $LOG_FILE
 
-whiptail --infobox "Installing Management container..."  20 60 --title "$TITLE"
-subutai import management
+whiptail --infobox "Installing Management container...\n\nWARNING: This can take some time\n\n Check the log in: $LOG_FILE"  20 60 --title "$TITLE"
+subutai import management | tee $LOG_FILE
+
